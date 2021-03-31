@@ -23,6 +23,10 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
 }
 
+springBoot {
+    buildInfo()
+}
+
 tasks.withType<KotlinCompile> {
     kotlinOptions {
         freeCompilerArgs = listOf("-Xjsr305=strict")
