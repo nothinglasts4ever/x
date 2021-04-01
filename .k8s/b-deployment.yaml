@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: b-app
+spec:
+  selector:
+    app: b-app
+  ports:
+    - protocol: TCP
+      port: 8081
+  type: NodePort
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: b-app
+spec:
+  selector:
+    matchLabels:
+      app: b-app
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: b-app
+    spec:
+      containers:
+        - name: b-app
+          image: b:0.0.2
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8081

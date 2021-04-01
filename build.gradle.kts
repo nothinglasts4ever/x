@@ -8,4 +8,4 @@ subprojects {
 }
 
 extra["appGroup"] = "com.github.nl4"
-extra["appVersion"] = "0.0.1"
+extra["appVersion"] = "0.0.2"
