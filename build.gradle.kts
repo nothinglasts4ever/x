@@ -8,4 +8,7 @@ subprojects {
 }
 
 extra["appGroup"] = "com.github.nl4"
-extra["appVersion"] = "0.0.2"
+extra["aAppVersion"] = "0.0.3"
+extra["bAppVersion"] = "0.0.3"
+
+extra["springBootVersion"] = "2.4.4"

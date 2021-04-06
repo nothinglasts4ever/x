@@ -8,10 +8,11 @@ plugins {
 }
 
 group = "${property("appGroup")}"
-version = "${property("appVersion")}"
+version = "${property("bAppVersion")}"
 java.sourceCompatibility = JavaVersion.VERSION_11
 
 repositories {
+    jcenter()
     mavenCentral()
 }
 
@@ -21,6 +22,10 @@ dependencies {
 
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-actuator")
+
+    // Security
+    implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("org.springframework.security.oauth.boot:spring-security-oauth2-autoconfigure:${property("springBootVersion")}")
 }
 
 springBoot {

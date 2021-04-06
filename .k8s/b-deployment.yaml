@@ -26,7 +26,10 @@ spec:
     spec:
       containers:
         - name: b-app
-          image: b:0.0.2
+          image: b:0.0.3
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8081
+          envFrom:
+            - secretRef:
+                name: auth-secret

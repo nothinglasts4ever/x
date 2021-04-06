@@ -1,11 +1,24 @@
 ## Release Notes
 
+### Application A (Auth Server)
+
 * 0.0.1 - Create multi-project using Gradle
-* 0.0.2 - Deploy apps to k8s (Minikube locally)
+* 0.0.2 - Deploy app to k8s (Minikube locally)
+* 0.0.3 - Convert to OAuth2 authorization server
+
+### Application B
+
+* 0.0.1 - Create multi-project using Gradle
+* 0.0.2 - Deploy app to k8s (Minikube locally)
+* 0.0.3 - Convert to OAuth2 resource server
 
 ## Implementation Details
 
-### Create multi-project using Gradle
+### 0.0.1 - Create multi-project using Gradle
+
+**NB**<br>
+> Typically, one repo for all the services is not used in microservice architecture development.<br>
+But I want to put all of them into a single repository as this is a pet project and also because I want to reuse some config files and have them in a single place
 
 First we need to create multi-project using Gradle and Kotlin Script.
 <details>
@@ -73,6 +86,7 @@ version = "${property("appVersion")}"
 java.sourceCompatibility = JavaVersion.VERSION_11
 
 repositories {
+    jcenter()
     mavenCentral()
 }
 
@@ -131,9 +145,9 @@ server:
 
 </details>
 
-### Deploy apps to k8s (Minikube locally)
+### 0.0.2 - Deploy apps to k8s (Minikube locally)
 
-Next we need to introduce Kubernetes like I did in my [another project](https://github.com/nothinglasts4ever/kuber) <br>
+Next we need to introduce Kubernetes like I did in my [another project Kuber](https://github.com/nothinglasts4ever/kuber) <br>
 It describes different aspects like ConfigMap or Dockerfile but for now we just need k8s service and deployment configuration
 <details>
   <summary>Let's add a-deployment.yaml file with the following content:</summary>
@@ -204,13 +218,13 @@ spec:
 
 NodePort type is used in order to expose 8080 port.
 </details>
-You can do the same deployment for b-app, just change exposed port to 8081 for it (as we configured in `application.yaml`)
+You can do the same deployment for b-app, just change exposed port to 8081 for it (as we configured in application.yaml)
 <details>
   <summary>To run it locally we use Minikube</summary>
 
 You need to install Minikube and run it using Docker driver.<br>
 Next we need to switch to docker environment using `eval $(minikube docker-env)` and deploy our service using our deployment `kubectl create -f .k8s/a-deployment.yaml` <br>
-To create tunnel for NodePort use `minikube service a-app` command, it shows you URL.<br>
+To create a tunnel for NodePort use `minikube service a-app` command, it shows you URL.<br>
 Use it to see that app is deployed and reachable via `GET http://ip-address:port/actuator/info` <br>
 Let's create `bash` script for it:
 
@@ -221,6 +235,175 @@ gradle bootBuildImage
 kubectl delete -f .k8s/a-deployment.yaml
 kubectl create -f .k8s/a-deployment.yaml
 minikube service a-app
+```
+
+</details>
+
+### 0.0.3 - Create OAuth2 authorization server
+
+<details>
+  <summary>To add OAuth2 functionality we need to add the following dependency to both auth and resource servers:</summary>
+
+```kotlin
+implementation("org.springframework.boot:spring-boot-starter-security")
+implementation("org.springframework.security.oauth.boot:spring-security-oauth2-autoconfigure:${property("springBootVersion")}")
+```
+
+Where `springBootVersion` is variable from root `build.gradle.kts` file:
+
+```kotlin
+extra["springBootVersion"] = "2.4.4"
+```
+
+</details>
+
+<details>
+  <summary>Next we convert a-app service to authorization server:</summary>
+
+Add `@EnableAuthorizationServer` annotation to Spring Boot main class:
+
+```kotlin
+@SpringBootApplication
+@EnableAuthorizationServer
+class AuthorizationServer
+
+fun main(args: Array<String>) {
+    runApplication<AuthorizationServer>(*args)
+}
+```
+
+Also need to implement `UserDetailsService` interface (for now, we simply grant access to any users with hardcoded password):
+
+```kotlin
+@Service
+class UserService(val bCryptPasswordEncoder: BCryptPasswordEncoder) : UserDetailsService {
+    override fun loadUserByUsername(username: String) = User(username, bCryptPasswordEncoder.encode("password"), emptyList())
+}
+```
+
+Additional configuration is needed in order to inject the encoder:
+
+```kotlin
+@Configuration
+class SecurityConfig {
+    @Bean
+    fun bCryptPasswordEncoder() = BCryptPasswordEncoder()
+}
+```
+
+</details>
+
+<details>
+  <summary>And make b-app a resource server:</summary>
+
+Add `@EnableResourceServer` annotation to Spring Boot main class:
+
+```kotlin
+@SpringBootApplication
+@EnableResourceServer
+class BApplication
+
+fun main(args: Array<String>) {
+    runApplication<BApplication>(*args)
+}
+```
+
+</details>
+
+<details>
+  <summary>Also need to add configuration to both auth and resource servers:</summary>
+
+```yaml
+security:
+  oauth2:
+    client:
+      client-id: ***
+      client-secret: ***
+    authorization:
+      jwt:
+        key-value: ***
+```
+
+</details>
+
+Now `b-app` is protected from access of unauthorized users.<br>
+If you try to execute `GET http://localhost:8081/actuator/info` you will get 401 error
+<details>
+  <summary>To get access to the service first you need JWT token:</summary>
+
+Run `POST client:53cr3t@localhost:8080/oauth/token` via Postman with the following parameters:
+
+* `Content-Type` header with value `application/x-www-form-urlencoded`
+* body key `scope` with value `any`
+* body key `grant_type` with value `password`
+* body key `username` with value `username`
+* body key `password` with value `password`
+
+Or run `curl client:53cr3t@localhost:8080/oauth/token -dgrant_type=password -dusername=username -dpassword=password -dscope=any` from command line
+
+You will get a response like the following:
+
+```
+{
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE1OTcyODA0OTQsInVzZXJfbmFtZSI6IkR1ZmYxMjMiLCJqdGkiOiJjM2Q0YzE3YS1jMzQ5LTQ5ODUtYjYwNi00Y2U4ZTJlZjhhMTgiLCJjbGllbnRfaWQiOiJjbGllbnQiLCJzY29wZSI6WyJhbnkiXX0.wumA1DRNI2M35SXjjy4m9u2vD1-BS5GE4XGfmNLeluI",
+    "token_type": "bearer",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE1OTk4MjkyOTQsInVzZXJfbmFtZSI6IkR1ZmYxMjMiLCJqdGkiOiI1MDFhYTlmYi00ZGExLTQ0YzAtODM5Mi0xNjMwOTc1MjFkM2UiLCJjbGllbnRfaWQiOiJjbGllbnQiLCJzY29wZSI6WyJhbnkiXSwiYXRpIjoiYzNkNGMxN2EtYzM0OS00OTg1LWI2MDYtNGNlOGUyZWY4YTE4In0.NtWzJAZvzjdgl6O9g4AmyfXPQI-A_lPv4x5vTMb6Dyg",
+    "expires_in": 43199,
+    "scope": "any",
+    "jti": "c3d4c17a-c349-4985-b606-4ce8e2ef8a18"
+}
+```
+
+We are interested in `access_token` field
+</details>
+
+<details>
+  <summary>And we need to use it in the subsequent requests:</summary>
+Put it to Authorization field with Bearer type.<br>
+The header of requests will look like:
+
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjE1OTcyODA0OTQsInVzZXJfbmFtZSI6IkR1ZmYxMjMiLCJqdGkiOiJjM2Q0YzE3YS1jMzQ5LTQ5ODUtYjYwNi00Y2U4ZTJlZjhhMTgiLCJjbGllbnRfaWQiOiJjbGllbnQiLCJzY29wZSI6WyJhbnkiXX0.wumA1DRNI2M35SXjjy4m9u2vD1-BS5GE4XGfmNLeluI
+```
+
+</details>
+
+This is exactly the same configuration as I used in my [another project OAuth](https://github.com/nothinglasts4ever/oauth) written on Java
+
+<details>
+  <summary>Last thing we need here is to put sensitive information into k8s secrets:</summary>
+
+Replace passwords with variables in `application.yaml` of both services:
+
+```yaml
+security:
+  oauth2:
+    client:
+      client-id: ${CLIENT_ID}
+      client-secret: ${CLIENT_SECRET}
+    authorization:
+      jwt:
+        key-value: ${SIGNING_KEY}
+```
+
+Add `auth-secret.yaml` with values encoded with base64 algorithm:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: auth-secret
+data:
+  CLIENT_ID: Y2xpZW50
+  CLIENT_SECRET: NTNjcjN0
+  SIGNING_KEY: czFnbjFuZ0szeQ==
+```
+
+And add new lines to `run.sh` script:
+
+```shell
+kubectl delete auth-secret
+kubectl apply -f .k8s/auth-secret.yaml
 ```
 
 </details>
